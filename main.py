@@ -1,33 +1,53 @@
 import asyncio
 import os
+import json
 import pandas as pd
 from datetime import datetime
+import logging
 
-from websocket_client_real_time import WebSocketClient
-from core import get_multi_df
-from indicator import IndicatorCalculator
-from strategy import strategy_macd_ichimoku
-from trade_planner import TradePlanner
-from trader import Trader
-from signal_checker import SignalChecker
-from notifier import Notifier
-from logger import get_logger
+from my_modules.websocket_client_real_time import WebSocketClient
+#from core import get_multi_df
+from my_modules.indicator import IndicatorCalculator
+from my_modules.strategy import IchimokuDayStrategy
+from my_modules.strategy import TradePlanner
+from my_modules.trader import Trader
+from my_modules.signalChecker import SignalChecker
+from my_modules.notifier.SignalDispatcher import SignalDispatcher
+from my_modules.logger import setup_logger
 
-# === CONFIG ===
-API_KEY = "your_api_key"
-API_SECRET = "your_secret_key"
+# === Load JSON data from CONFIG file
 EQUITY = 10000
+with open('config.json', 'r', encoding='utf-8') as file:
+    config_data = json.load(file)
+
+SYMBOLS                   = config_data["SYMBOLS"]
+TIMEFRAMES                = config_data["TIMEFRAMES"]
+WEBSOCKET_TIMEFRAME_CODES = config_data["WEBSOCKET_TIMEFRAME_CODES"]
+REST_TIMEFRAME_CODES      = config_data["REST_TIMEFRAME_CODES"]
+
+TELEGRAM_chat_id      = config_data["TELEGRAM"]["chat_id"]
+TELEGRAM_token        = config_data["TELEGRAM"]["token"]
+
+TWITTER_api_key       = config_data["TWITTER"]["api_key"]
+TWITTER_api_secret    = config_data["TWITTER"]["api_secret"]
+TWITTER_access_token  = config_data["TWITTER"]["access_token"]
+TWITTER_access_secret = config_data["TWITTER"]["access_secret"]
+
+LINKEDIN_user_name    = config_data["LINKEDIN"]["username"]
+TWITTER_password      = config_data["TWITTER"]["password"]
+
+LBANK_api_key         = config_data["LBANK"]["api_key"]
+LBANK_api_secret      = config_data["LBANK"]["api_secret"]
+
 SIGNAL_FILE = "signals.csv"
-SYMBOLS = ["btc_usdt", "eth_usdt"]
-TIMEFRAMES = ["1min"]
 
 # === LOGGING ===
-logger = get_logger("app")
+logger = setup_logger(name="lbank_ws_logger", level=logging.INFO)
 
 # === COMPONENTS ===
 planner = TradePlanner(equity=EQUITY)
-trader = Trader(api_key=API_KEY, secret_key=API_SECRET)
-notifier = Notifier()
+trader = Trader(api_key=LBANK_api_key, secret_key=LBANK_api_secret)
+notifier = SignalDispatcher()
 checker = SignalChecker(signal_file=SIGNAL_FILE, trader=trader, notifier=notifier)
 
 # === INIT SIGNAL DB ===
@@ -90,7 +110,7 @@ async def handle_message(data, df_store, order_books):
                 calc = IndicatorCalculator(df)
                 df = calc.calculate_macd().calculate_ichimoku().get_df()
 
-                result = strategy_macd_ichimoku(df)
+                result = IchimokuDayStrategy(df)
                 if result:
                     signal = {
                         "symbol": symbol,
@@ -108,7 +128,20 @@ async def handle_message(data, df_store, order_books):
             logger.error(f"[DATA HANDLER ERROR] {symbol}: {e}")
 
 # === MAIN ===
-if __name__ == "__main__":
+def main() -> None:
+    """Main entry point for the LBank Trading Bot."""
     logger.info("🔄 Starting LBank Trading Bot...")
-    ws_client = WebSocketClient(symbols=SYMBOLS, timeframes=TIMEFRAMES, on_message_callback=handle_message)
+    ws_client = WebSocketClient(
+        symbols=SYMBOLS,
+        timeframes=TIMEFRAMES,
+        on_message_callback=handle_message
+    )
     asyncio.run(ws_client.connect())
+
+if __name__ == "__main__":
+    main()
+
+    
+
+
+    
